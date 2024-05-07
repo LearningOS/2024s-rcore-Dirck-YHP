@@ -14,9 +14,11 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::MAX_APP_NUM;
+use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
+
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -45,6 +47,11 @@ pub struct TaskManagerInner {
     tasks: [TaskControlBlock; MAX_APP_NUM],
     /// id of current `Running` task
     current_task: usize,
+
+    // task调用的syscall的次数
+    syscall_times: [[u32; MAX_SYSCALL_NUM]; MAX_SYSCALL_NUM],
+    // task第一次调用syscall的时间
+    first_time: [usize; MAX_SYSCALL_NUM],
 }
 
 lazy_static! {
@@ -65,6 +72,8 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
+                    syscall_times: [[0;MAX_SYSCALL_NUM]; MAX_SYSCALL_NUM],
+                    first_time: [0; MAX_SYSCALL_NUM],
                 })
             },
         }
@@ -78,6 +87,7 @@ impl TaskManager {
     /// But in ch3, we load apps statically, so the first task is a real app.
     fn run_first_task(&self) -> ! {
         let mut inner = self.inner.exclusive_access();
+        inner.first_time[0] = get_time_ms();
         let task0 = &mut inner.tasks[0];
         task0.task_status = TaskStatus::Running;
         let next_task_cx_ptr = &task0.task_cx as *const TaskContext;
@@ -123,6 +133,11 @@ impl TaskManager {
             let current = inner.current_task;
             inner.tasks[next].task_status = TaskStatus::Running;
             inner.current_task = next;
+
+            if inner.first_time[next] == 0 {
+                inner.first_time[next] = get_time_ms();
+            }
+
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
             drop(inner);
@@ -135,6 +150,28 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// 给当前任务增加siscall次数
+    pub fn increase_current_syscall_times(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.syscall_times[current][syscall_id] = inner.syscall_times[current][syscall_id] + 1;
+    }
+
+    /// 得到当前task的syscall的次数
+    pub fn get_syscall_times(&self) -> [u32; MAX_SYSCALL_NUM] {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.syscall_times[current]
+    }
+
+    /// 得到当前task第一次调用syscall的时间
+    pub fn get_first_time(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.first_time[current]
+    }
+
 }
 
 /// Run the first task in task list.
