@@ -49,9 +49,9 @@ pub struct TaskManagerInner {
     current_task: usize,
 
     // task调用的syscall的次数
-    syscall_times: [[u32; MAX_SYSCALL_NUM]; MAX_SYSCALL_NUM],
+    syscall_times: [[u32; MAX_SYSCALL_NUM]; MAX_APP_NUM],
     // task第一次调用syscall的时间
-    first_time: [usize; MAX_SYSCALL_NUM],
+    first_time: [usize; MAX_APP_NUM],
 }
 
 lazy_static! {
@@ -72,8 +72,8 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
-                    syscall_times: [[0;MAX_SYSCALL_NUM]; MAX_SYSCALL_NUM],
-                    first_time: [0; MAX_SYSCALL_NUM],
+                    syscall_times: [[0;MAX_SYSCALL_NUM]; MAX_APP_NUM],
+                    first_time: [0; MAX_APP_NUM],
                 })
             },
         }
